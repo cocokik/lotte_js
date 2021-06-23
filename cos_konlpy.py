@@ -3,7 +3,8 @@ from numpy import dot
 from numpy.linalg import norm 
 import numpy as np 
 
-
+#https://needjarvis.tistory.com/665
+#Jpype1 설치 필요
 # 코사인 유사도를 구하는 함수 
 def cos_sim(a, b): 
 	return dot(a, b)/(norm(a)*norm(b)) 
