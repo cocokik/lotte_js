@@ -1,20 +1,19 @@
-from os import name
-from typing import Dict, List, Text
+
 import urllib.request
 import bs4
 from konlpy.tag import Okt
-from numpy import datetime64, dot
+from numpy import dot
 from numpy.linalg import norm 
 import numpy as np 
 from datetime import datetime
-
 class News: #뉴스 저장용 클래스 제목, 내용, 링크, 시간, 언론사.
-    def __init__(self, name,desc,link,time,media):
+    def __init__(self, name,desc,link,time,media,key):
         self.name = name
         self.desc = desc
         self.link = link
         self.time = time
         self.media = media
+        self.key = key
 
 
 # 코사인 유사도를 구하는 함수 
@@ -39,135 +38,169 @@ def getTextOfBList(vBList):
         return vBList[len(vBList) - 1].text
     else :
         return ""
+
 def getArticle_custom(vPara):
-    okt = Okt() 
+    okt = Okt()
+    vSimilarity = 0.4
+    
+    vMediaList = str.split(vPara[0],"#")
+    vDelList = str.split(vPara[1],"#")
+    del vPara[0]
+    del vPara[0]
+
+    # 유사도 체크를 위해서 사용할 리스트 여기서 쓰면 전체 체크인데 
+    # 검색 뉴스가 증가하면 기하급수로 증가해서 너무 오래걸리는거 같음..
+    # vDonusDescList = [] 
+    # vDonusNameList = [] 
+    vNewsDescList = [] # 내용 중복 체크하기 위해 사용.
+    vNewsDict = {} #뉴스 데이터 담을 딕셔너리
+    vResultData = ""
+
+    
+    totalCount = 0
+    
+    startTime = datetime.now() # 시간 확인용
     # vPara = 키워드@@@@@url
     # 키워드와 URL을 @@@@@로 구분해서 받은 다음 split 한다.
-    vSubUrl = str.split(vPara,"@@@@@")
+    for url in vPara: # 키워드별로 루프돌리기
+        vSubUrl = str.split(url,"@@@@@")
 
-    startTime = datetime.now()
-    vKey = vSubUrl[0]
-    vUrl = vSubUrl[1]
+        # 유사도 체크를 위한 리스트 여기에 뉴스 하나씩 추가하면 새로 찾은 뉴스와 유사도 비교함
+        # 키워드마다 초기화
+        vDonusDescList = [] 
+        vDonusNameList = [] 
+        
+        vKey = vSubUrl[0]
+        vUrl = vSubUrl[1]
+        vNewsCount = 0 #뉴스 번호
+        vEndFlag = False #완료 체크용 플래그
+        
+        for _ in range(30): #페이지 변경용 루프 한페이지에 현재 10개씩 나옴
+            if vEndFlag : break #마지막 페이지 까지 체크시 Break
+            url = vUrl + "&start={0}".format(vNewsCount + 1) # 검색 시작점 변경 여기서 처음 시작시 1번부터 이후에는 11, 21, 31 번쨰 기사부터 찾아온다.
+            try: #URL 소스 받아오기
+                html = urllib.request.urlopen(url)
+            except Exception as e:
+                return("FAIL-CHECK-01")
 
-    vNewsCount = 0 #뉴스 번호
-    vNewsDict = {} #뉴스 데이터 담을 딕셔너리
-    vEndFlag = False #완료 체크용 플래그
 
-    vCheckerList = []
-    for _ in range(70): #페이지 변경용 루프 한페이지에 현재 10개씩 나옴
-        if vEndFlag : break #마지막 페이지 까지 체크시 Break
-        url = vUrl + "&start={0}".format(vNewsCount + 1) # 검색 시작점 변경 여기서 처음 시작시 1번부터 이후에는 11, 21, 31 번쨰 기사부터 찾아온다.
-        try: #URL 소스 받아오기
-            html = urllib.request.urlopen(url)
-        except Exception as e:
-            return("FAIL-CHECK-01")
+            bsObj = bs4.BeautifulSoup(html, "html.parser") # 뷰티솝 라이브러리로 파싱하기
+            bsNewsObj = bsObj.find_all("div",class_="news_area") # URL 에서 받아온 소스에서 찾은 뉴스 기사 리스트
+            if (len(bsNewsObj) > 0 ): # 뉴스가 있는 경우에만 조회
+                for infoNews in bsNewsObj:   # 해당 페이지의 뉴스기사 찾아서 반복 
+                    totalCount += 1
+                    try:
 
-        bsObj = bs4.BeautifulSoup(html, "html.parser") # 뷰티솝 라이브러리로 파싱하기
-        bsNewsObj = bsObj.find_all("div",class_="news_area") # URL 에서 받아온 소스에서 찾은 뉴스 기사 리스트
-        if (len(bsNewsObj) > 0 ): # 뉴스가 있는 경우에만 조회
-            for infoNews in bsNewsObj:   # 해당 페이지의 뉴스기사 찾아서 반복 
-                try:
-                    #뉴스 객체에 저장
-                    name = infoNews.find("a",class_="news_tit").text # 타이틀 가져오기
-                    desc = infoNews.find("a",class_="dsc_txt_wrap").text #설명 가져오기
-                    link = infoNews.find("a",class_="dsc_txt_wrap")['href'] #링크 가져오기
-                    time = getTextOfBList(infoNews.find_all("span",class_="info")) #시간 가져오기 
-                    media = infoNews.find("a",class_="info press").text #언론사 가져오기
-                    news = News(name, desc, link, time, media) # 뉴스 객체
-                    vNewsCount += 1
-
-                    # print ("{0} 번째 뉴스".format(vNewsCount + 1))
-                    # print("제목 : " + name)
-                    # print("내용 : " + desc)
-                    # print("링크 : " + link)
-                    # print("시간 : " + time)
-                    # print("언론사 : " + media)
+                        # 마지막 페이지인지 체크 및 탈출을 위한 부분
+                        if vEndFlag : break 
+                        if(len(bsNewsObj) == 1):vEndFlag = True #페이지에 결과가 1개인 경우 마지막 뉴스까지 탐색 완료 (다음 페이지가 없는 경우 뉴스 1개만 나옴)
                         
-                    if(not name in vNewsDict): # 같은 제목이 있는 뉴스면 스킵한다.
-                        #딕셔너리에 뉴스 추가
+
+                        vBoolPut = True # 저장할 뉴스인지 체크 하기 위한 불
+                        #뉴스 객체에 저장
+                        name = infoNews.find("a",class_="news_tit").text # 타이틀 가져오기
+                        desc = infoNews.find("a",class_="dsc_txt_wrap").text #설명 가져오기
+                        link = infoNews.find("a",class_="dsc_txt_wrap")['href'] #링크 가져오기
+                        time = getTextOfBList(infoNews.find_all("span",class_="info")) #시간 가져오기 
+                        media = infoNews.find("a",class_="info press").text #언론사 가져오기
+                        news = News(name, desc, link, time, media, vKey) # 뉴스 객체
+                        vNewsCount += 1
+                        # print(name)
+                        # print ("{0} 번째 뉴스".format(vNewsCount + 1))
+                        # print("제목 : " + name)
+                        # print("내용 : " + desc)
+                        # print("링크 : " + link)
+                        # print("시간 : " + time)
+                        # print("언론사 : " + media)
+                        
+
+                        if(name in vNewsDict): # 같은 제목이 있는 뉴스면 스킵한다.
+                            # vBoolPut = False
+                            continue
+                        if(len(desc) < 55): # 55글자보다 내용이 적은 뉴스는 스킵한다.
+                            # vBoolPut = False
+                            continue
+                        elif(desc[:20] in vNewsDescList): # 동일한 내용이 있는 경우에 스킵한다.
+                            # vBoolPut = False
+                            continue
+                        
+                        # 사용할 언론사인지 체크
+                        vBoolPut = False
+                        for item in vMediaList:
+                            if media == item : 
+                                vBoolPut = True
+                                break
+                        if not vBoolPut : continue
+
+                        # 삭제할 단어가 제목에 있는지 체크
+                        for item in vDelList:
+                            if name.find(item) > -1:
+                                vBoolPut = False
+                                break
+                        if not vBoolPut : continue
+
+                        # 포토 뉴스 거르기 위한 추가 로직 
+                        if(media == "연합뉴스" and link.find("=1196m") != -1): # 연합뉴스의 포토뉴스.
+                            continue
+                        if(media == "연합뉴스" and link.find("=1136m") != -1): # 연합뉴스의 그래픽뉴스.
+                            continue
+                        if(name.find("[사진]") != -1): # 제목에 [사진] 이 포함된 경우
+                            continue
+                        if(media == "뉴시스" and link.find("cID") == -1): # 뉴시스의 포토뉴스
+                            continue
+                        if(link.find("photo") != -1): # 링크에 포토가 있는 경우 스킵
+                            continue
+                        if(media == "뉴스핌" and desc[0] == "="):
+                            continue
+            
+
+                        # 제목 유사도 체크
+                        v2 = okt.nouns(name) 
+                        for v1 in vDonusNameList:
+                            v3 = v1 + v2
+                            feats = set(v3) 
+                            v1_arr = np.array(make_matrix(feats, v1)) 
+                            v2_arr = np.array(make_matrix(feats, v2)) 
+                            cs = cos_sim(v1_arr, v2_arr)
+                            if (cs > vSimilarity):
+                                vBoolPut = False
+                                break
+                        if not vBoolPut : continue
+                        
+                        # 내용 유사도 체크
+                        # v2 = okt.nouns(name) 
+                        # for v1 in vDonusDescList:
+                        #     v3 = v1 + v2
+                        #     feats = set(v3) 
+                        #     v1_arr = np.array(make_matrix(feats, v1)) 
+                        #     v2_arr = np.array(make_matrix(feats, v2)) 
+                        #     cs = cos_sim(v1_arr, v2_arr)
+                        #     if (cs > vSimilarity):
+                        #         vBoolPut = False
+                        #         break
+                        if not vBoolPut : continue
+
+                        # 뉴스내용 20글자 리스트에 넣기
+                        vNewsDescList.append(desc[:20])
+                        
+                        # 뉴스제목 리스트에 넣기 
                         vNewsDict[name] = news
 
-                    if(len(bsNewsObj) == 1):vEndFlag = True #페이지에 결과가 1개인 경우 마지막 뉴스까지 탐색 완료 (다음 페이지가 없는 경우 뉴스 1개만 나옴)
-                    if vEndFlag : break 
-                    # print("--------------------------------------------------------------")
-                    
-                except Exception as e:
-                    # print (vNewsCount)
-                    continue
-                    # return("FAIL-CHECK-02")
-    # 완벽 일치 제거
-    i = 0
-    vLiKey = []
-    if(len(vNewsDict) > 0):
-        
-        for key, value in vNewsDict.items():
-            i +=1
-            # 탭으로 구분하여 스트링으로 만들기
-            # 내용이 짧은 뉴스는 스킵한다.
-            if(len(value.desc) > 55): # 55글자보다 내용이 적은 뉴스는 스킵
-                checker = value.desc[:20] # 내용의 앞에서 20글자가 동일한 경우 같은 뉴스로 보고 스킵한다.
-                if(checker not in vCheckerList):
-                    vCheckerList.append(checker)
-                else:    
-                    vLiKey.append(key)
-        for key in vLiKey:
-            vNewsDict.pop(key)
+                        # 형태소 배열 리스트에 추가
+                        vDonusNameList.append(okt.nouns(name)) # 제목
+                        # vDonusDescList.append(okt.nouns(desc)) # 내용
 
-    vResultData = ""
-    vCheckCount = 0
-    vSelectedNewsCount = 0
-
-    if(len(vNewsDict) > 0):
-        for _ in range(len(vNewsDict)):
-            # print ("개수 : ", len(vNewsDict))
-            if len(vNewsDict) == 1 : break
-            vSelectedSubj = ""
-            v1 = okt.nouns(vSelectedSubj)
-            vLiKey = []
-            for key, value in vNewsDict.items():
-                # i +=1
-                if(vSelectedSubj == "" ): 
-                    v1 = okt.nouns(value.name) 
-                    vSelectedSubj = value.name
-                    vLiKey.append(key)
-                    vSelectedNewsCount += 1
-                    # vNewsDict.pop(key)
-                    vResultData = vResultData + "{5} \t {0} \t{1} \t{2} \t{3} \t {4} \n".format(value.name, value.link, value.time, value.media, value.desc, vKey)
-                else:
-                    v2 = okt.nouns(value.name) 
-                    v3 = v1 + v2
-                    feats = set(v3) 
-                    v1_arr = np.array(make_matrix(feats, v1)) 
-                    v2_arr = np.array(make_matrix(feats, v2)) 
-                    cs = cos_sim(v1_arr, v2_arr)
-                    if (cs > 0.4):
-                        vCheckCount += 1
-                        # print (vSelectedSubj)
-                        # print (value.name)
-                        # print (cs)
-                        vLiKey.append(key)
-
-            for key in vLiKey:
-                vNewsDict.pop(key)
-
-                    # 읽어온 모든 뉴스 vResultData에 누적한다. (엑셀에 그대로 입력하기 위해서 탭으로 구분)
-                    # 0, 4번은 내용중에 탭이 씹히게 만드는 문자가 있어서 공백 한칸 추가함.
-                    # vResultData = vResultData + "{5} \t {0} \t{1} \t{2} \t{3} \t {4} \n".format(value.name, value.link, value.time, value.media, value.desc, vKey)
-        #     # print("키워드 : " + vKey)
-        #     # print("내용 : " + value.desc)
-        #     # print("링크 : " + value.link)
-        #     # print("시간 : " + value.time)
-        #     # print("언론사 : " + value.media)
-        #     # print("--------------------------------------------------------------!")
-        
-        # print("전체 : {0} / 중복 : {1} / 남은 뉴스 : {2}\n시작시간 : {3}, 종료시간 {4}".format(len(vCheckerList), vCheckCount, vSelectedNewsCount,startTime, datetime.now()))
-        
+                    except Exception as e:
+                        # print ("vNewsCount")
+                        continue
+                        # return("FAIL-CHECK-02")
+    # print(str(type(vNewsDict)))
+    # print("selected:", len(vNewsDict))
+    # print("total:", totalCount)
+    if(len(vNewsDict) > 0): # 검색한 뉴스가 있는 경우
+        for _, value in vNewsDict.items(): # 뉴스 정보 vResultData에 누적하기
+            vResultData = vResultData + "{0} \t {1} \t{2} \t{3} \t{4} \t{5}\n".format(value.name, value.desc, value.time, value.key, value.link, value.media)
         return vResultData
     else:
-        return("뉴스 없음")
+        return("뉴스 없음")   
      
-# 테스트용
-# getArticle_custom("고려아연_고려아연_5@@@@@https://search.naver.com/search.naver?where=news&query=%22%EB%85%B8%EB%8F%99%22&sm=tab_opt&sort=1&photo=0&field=0&pd=3&ds=2021.06.21&de=2021.06.21&docid=&related=0&mynews=0&office_type=0&office_section_code=0&news_office_checked=&nso=so%3Ar%2Cp%3Afrom20210621to20210621&is_sug_officeid=0")
-
-
-
