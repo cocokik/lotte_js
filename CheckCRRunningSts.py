@@ -3,10 +3,10 @@ import urllib.request
 import json
 
 def getToken():
-    url="http://scazrdevw1:7777/v1/authentication"
+    url="http://CR/v1/authentication"
     data = {}
-    data["username"] = "rpa-api-test"
-    data["password"] = "tjfls123!"
+    data["username"] = "ID"
+    data["password"] = "PW"
     
     data = json.dumps(data)
     data = str(data)
@@ -20,7 +20,7 @@ def getToken():
 
 def checkUpdateDevice():
 
-    url="http://scazrdevw1:7777/v2/activity/list"
+    url="http://CR/v2/activity/list"
     headers = {"X-Authorization":getToken()}
 
     data ={}
